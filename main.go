@@ -47,10 +47,10 @@ func main() {
 		panic(nil)
 	}
 
-	sshHost := os.Getenv("SSH_HOST")
-	if sshHost == "" {
-		log.Fatal("Environment variable SSH_HOST is not set")
-		panic(nil)
+	sshPort := os.Getenv("SSH_PORT")
+	if sshPort == "" {
+		sshPort = "22"
+		log.Printf("Environment variable SSH_PORT is not set. Using 22 as default.")
 	}
 
 	fileContents, err := os.ReadFile(filePath)
@@ -147,7 +147,7 @@ func main() {
 				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 				Timeout:         0,
 			}
-			sshClient, err := ssh.Dial("tcp", sshHost, sshConfig)
+			sshClient, err := ssh.Dial("tcp", nodeName+":"+sshPort, sshConfig)
 			if err != nil {
 				log.Printf("Error establishing SSH connection: %v", err)
 				return
