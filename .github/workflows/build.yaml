@@ -1,26 +1,15 @@
-name: Create and publish a Docker image
+name: Build image to verify renovate updates
 
 on:
   push:
     branches:
-      - 'v*'
+      - 'renovate/*'
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-    - uses: actions/checkout@v3
-    - uses: ncipollo/release-action@v1
-      with:
-        makeLatest: true
-        skipIfReleaseExists: true
-
   build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
@@ -53,11 +42,11 @@ jobs:
       - name: Prepare new buildx context
         run: docker buildx create --use
 
-      - name: Build and push Docker image
+      - name: Build image
         uses: docker/build-push-action@v4
         with:
           context: .
-          push: true
+          push: false
           platforms: linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
