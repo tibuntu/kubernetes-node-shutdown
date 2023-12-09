@@ -29,21 +29,18 @@ func main() {
 		panic(nil)
 	}
 
-	// Get the node name from the environment variable
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
 		log.Fatal("Environment variable NODE_NAME is not set")
 		panic(nil)
 	}
 
-	// Read contents of a file specified by an environment variable
 	filePath := os.Getenv("SSH_PRIVATE_KEY_PATH")
 	if filePath == "" {
 		log.Fatal("Environment variable SSH_PRIVATE_KEY_PATH is not set")
 		panic(nil)
 	}
 
-	// Read contents of a file specified by an environment variable
 	sshUser := os.Getenv("SSH_USER_NAME")
 	if sshUser == "" {
 		log.Fatal("Environment variable SSH_USER_NAME is not set")
@@ -69,25 +66,22 @@ func main() {
 		panic(nil)
 	}
 
-	shutdownThreshold := os.Getenv("SHUTDOWN_THRESHOLD")
-	if shutdownThreshold == "" {
-		log.Fatal("Environment variable SHUTDOWN_THRESHOLD is not set")
+	MemoryThreshold := os.Getenv("MEMORY_THRESHOLD")
+	CPUthreshold := os.Getenv("CPU_THRESHOLD")
+
+	if CPUthreshold == "" && MemoryThreshold == "" {
+		log.Print("No shutdown threshold set.")
+		log.Fatal("At least one of CPU_THRESHOLD or MEMORY_THRESHOLD must be set!")
 		panic(nil)
 	}
 
-	shutdownThresholdInt, err := strconv.ParseInt(shutdownThreshold, 10, 64)
-	if err != nil {
-		log.Fatalf("%v", err)
+	shutdownDelayMinutes := os.Getenv("SHUTDOWN_DELAY_MINUTES")
+	if shutdownDelayMinutes == "" {
+		log.Fatal("Environment variable SHUTDOWN_DELAY_MINUTES is not set")
 		panic(nil)
 	}
 
-	shutdownDelay := os.Getenv("SHUTDOWN_DELAY")
-	if shutdownDelay == "" {
-		log.Fatal("Environment variable SHUTDOWN_DELAY is not set")
-		panic(nil)
-	}
-
-	shutdownDelayInt, err := strconv.Atoi(shutdownDelay)
+	shutdownDelayInt, err := strconv.Atoi(shutdownDelayMinutes)
 	if err != nil {
 		log.Fatalf("%v", err)
 		panic(nil)
@@ -96,11 +90,8 @@ func main() {
 	// Create a timer that triggers every minute
 	timer := time.NewTicker(1 * time.Minute)
 
-	// Initialize the consecutive checks counter
 	checksBelowThreshold := 0
-	// Define a function to check CPU usage and SSH into the node
 	checkAndSSH := func() {
-		// Query node metrics (CPU usage) for the specified node
 		nodeMetricsClient := metricsClient.MetricsV1beta1().NodeMetricses()
 		nodeMetrics, err := nodeMetricsClient.Get(context.TODO(), nodeName, metav1.GetOptions{})
 		if err != nil {
@@ -108,22 +99,45 @@ func main() {
 			return
 		}
 
-		cpuUsage := nodeMetrics.Usage["cpu"]
-		cpuMilliValue := cpuUsage.MilliValue()
-		log.Printf("Node %s CPU Usage: %dm\n", nodeName, cpuMilliValue)
-
-		// Check if CPU usage is below the threshold
-		if cpuMilliValue <= shutdownThresholdInt {
-			// Increment the consecutive checks counter
-			checksBelowThreshold++
-		} else {
-			// Reset the consecutive checks counter
-			checksBelowThreshold = 0
+		if MemoryThreshold != "" {
+			MemoryThresholdInt, err := strconv.ParseInt(MemoryThreshold, 0, 64)
+			if err != nil {
+				log.Fatalf("%v", err)
+				panic(nil)
+			}
+			memoryUsage := nodeMetrics.Usage["memory"]
+			memoryValue := memoryUsage.Value() / 1024 / 1024
+			log.Printf("Node %s memory usage: %dMB", nodeName, memoryValue)
+			if memoryValue <= MemoryThresholdInt {
+				checksBelowThreshold++
+				remainingMinutes := shutdownDelayInt - checksBelowThreshold
+				log.Printf("Memory usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
+			} else {
+				log.Printf("Memory usage above configured threshold. Resetting shutdown delay back to %d minutes", shutdownDelayInt)
+				checksBelowThreshold = 0
+			}
 		}
 
-		// If CPU usage has been below the threshold for 10 consecutive checks, take action
+		if CPUthreshold != "" {
+			CPUthresholdInt, err := strconv.ParseInt(CPUthreshold, 10, 64)
+			if err != nil {
+				log.Fatalf("%v", err)
+				panic(nil)
+			}
+			cpuUsage := nodeMetrics.Usage["cpu"]
+			cpuValue := cpuUsage.MilliValue()
+			log.Printf("Node %s CPU usage: %dm", nodeName, cpuValue)
+			if cpuValue <= CPUthresholdInt {
+				checksBelowThreshold++
+				remainingMinutes := shutdownDelayInt - checksBelowThreshold
+				log.Printf("CPU usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
+			} else {
+				log.Printf("CPU usage above configured threshold. Resetting shutdown delay back to %d minutes", shutdownDelayInt)
+				checksBelowThreshold = 0
+			}
+		}
+
 		if checksBelowThreshold >= shutdownDelayInt {
-			// Send SSH commands to a Linux VM (example)
 			sshConfig := &ssh.ClientConfig{
 				User: sshUser,
 				Auth: []ssh.AuthMethod{
@@ -147,7 +161,7 @@ func main() {
 			}
 			defer session.Close()
 
-			// Execute an SSH command (example: echo "Hello, world!")
+			log.Printf("Shutdown delay reached. Sending shutdown signal to node.")
 			output, err := session.CombinedOutput("sudo /usr/sbin/shutdown now")
 			if err != nil {
 				log.Printf("Error executing SSH command: %v", err)
@@ -158,13 +172,11 @@ func main() {
 		}
 	}
 
-	// Execute the function immediately and then at every minute interval
 	checkAndSSH()
 	for range timer.C {
 		checkAndSSH()
 	}
 
 	stopCh := make(chan struct{})
-	// Run the application indefinitely (or until manually terminated)
 	<-stopCh
 }
