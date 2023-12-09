@@ -63,6 +63,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: "Generate release changelog"
-        uses: heinrichreimer/action-github-changelog-generator@v2.3
+        uses: heinrichreimer/action-github-changelog-generator@v2.4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
