@@ -29,6 +29,14 @@ func main() {
 		panic(nil)
 	}
 
+	dryRun := os.Getenv("DRY_RUN_MODE")
+	if dryRun == "" {
+		dryRun = "false"
+		log.Printf("Environment variable DRY_RUN_MODE is not set. Using false as default.")
+	} else if dryRun == "true" {
+		log.Printf("Running in dry run mode. Not performing shutdown.")
+	}
+
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
 		log.Fatal("Environment variable NODE_NAME is not set")
@@ -138,37 +146,42 @@ func main() {
 		}
 
 		if checksBelowThreshold >= shutdownDelayInt {
-			sshConfig := &ssh.ClientConfig{
-				User: sshUser,
-				Auth: []ssh.AuthMethod{
-					// Use the PublicKeys method for remote authentication.
-					ssh.PublicKeys(signer),
-				},
-				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-				Timeout:         0,
-			}
-			sshClient, err := ssh.Dial("tcp", nodeName+":"+sshPort, sshConfig)
-			if err != nil {
-				log.Printf("Error establishing SSH connection: %v", err)
-				return
-			}
-			defer sshClient.Close()
+			if dryRun == "true" {
+				log.Printf("Shutdown delay has been reached. If you want to send an actual shutdown signal, disable dry run mode.")
+				checksBelowThreshold = 0
+			} else {
+				sshConfig := &ssh.ClientConfig{
+					User: sshUser,
+					Auth: []ssh.AuthMethod{
+						// Use the PublicKeys method for remote authentication.
+						ssh.PublicKeys(signer),
+					},
+					HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+					Timeout:         0,
+				}
+				sshClient, err := ssh.Dial("tcp", nodeName+":"+sshPort, sshConfig)
+				if err != nil {
+					log.Printf("Error establishing SSH connection: %v", err)
+					return
+				}
+				defer sshClient.Close()
 
-			session, err := sshClient.NewSession()
-			if err != nil {
-				log.Printf("Error creating SSH session: %v", err)
-				return
-			}
-			defer session.Close()
+				session, err := sshClient.NewSession()
+				if err != nil {
+					log.Printf("Error creating SSH session: %v", err)
+					return
+				}
+				defer session.Close()
 
-			log.Printf("Shutdown delay reached. Sending shutdown signal to node.")
-			output, err := session.CombinedOutput("sudo /usr/sbin/shutdown now")
-			if err != nil {
-				log.Printf("Error executing SSH command: %v", err)
-				panic(nil)
+				log.Printf("Shutdown delay reached. Sending shutdown signal to node.")
+				output, err := session.CombinedOutput("sudo /usr/sbin/shutdown now")
+				if err != nil {
+					log.Printf("Error executing SSH command: %v", err)
+					panic(nil)
+				}
+				fmt.Printf("%s", output)
+				checksBelowThreshold = 0
 			}
-			fmt.Printf("%s", output)
-			checksBelowThreshold = 0
 		}
 	}
 
