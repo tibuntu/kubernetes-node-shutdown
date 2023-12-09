@@ -3,3 +3,4 @@ Dockerfile
 LICENSE
 README.MD
 .github/
+renovate.json
