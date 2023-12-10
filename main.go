@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	"golang.org/x/crypto/ssh"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1" // Import metav1
@@ -43,6 +44,19 @@ func main() {
 		log.Fatal("Environment variable NODE_NAMES is not set")
 		panic(nil)
 	}
+
+	timezoneEnv := os.Getenv("TZ")
+	if timezoneEnv == "" {
+		log.Printf("Environment variable TZ is not set. Using UTC as default.")
+		timezoneEnv = "UTC"
+	}
+
+	location, err := time.LoadLocation(timezoneEnv)
+	if err != nil {
+		log.Fatalf("Error loading time zone: %v", err)
+		panic(nil)
+	}
+	time.Local = location
 
 	filePath := os.Getenv("SSH_PRIVATE_KEY_PATH")
 	if filePath == "" {
