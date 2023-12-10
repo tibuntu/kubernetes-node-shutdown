@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -37,9 +38,9 @@ func main() {
 		log.Printf("Running in dry run mode. Not performing shutdown.")
 	}
 
-	nodeName := os.Getenv("NODE_NAME")
-	if nodeName == "" {
-		log.Fatal("Environment variable NODE_NAME is not set")
+	nodeNamesEnv := os.Getenv("NODE_NAMES")
+	if nodeNamesEnv == "" {
+		log.Fatal("Environment variable NODE_NAMES is not set")
 		panic(nil)
 	}
 
@@ -95,107 +96,119 @@ func main() {
 		panic(nil)
 	}
 
+	log.Printf("Starting shutdown loop. Nodes to watch are %s with a configured delay of %s minutes", nodeNamesEnv, shutdownDelayMinutes)
 	// Create a timer that triggers every minute
 	timer := time.NewTicker(1 * time.Minute)
-
+	nodeNames := strings.Split(nodeNamesEnv, ",")
 	checksBelowThreshold := 0
+	incremented := false
+
 	checkAndSSH := func() {
-		nodeMetricsClient := metricsClient.MetricsV1beta1().NodeMetricses()
-		nodeMetrics, err := nodeMetricsClient.Get(context.TODO(), nodeName, metav1.GetOptions{})
-		if err != nil {
-			log.Printf("Error getting node metrics for node %s: %v", nodeName, err)
-			return
-		}
-
-		if MemoryThreshold != "" {
-			MemoryThresholdInt, err := strconv.ParseInt(MemoryThreshold, 0, 64)
+		for _, nodeName := range nodeNames {
+			nodeMetricsClient := metricsClient.MetricsV1beta1().NodeMetricses()
+			nodeMetrics, err := nodeMetricsClient.Get(context.TODO(), nodeName, metav1.GetOptions{})
 			if err != nil {
-				log.Fatalf("%v", err)
-				panic(nil)
+				log.Printf("Error getting node metrics for node %s: %v", nodeName, err)
+				return
 			}
-			memoryUsage := nodeMetrics.Usage["memory"]
-			memoryValue := memoryUsage.Value() / 1024 / 1024
-			log.Printf("Node %s memory usage: %dMB", nodeName, memoryValue)
-			if memoryValue <= MemoryThresholdInt {
-				checksBelowThreshold++
-				remainingMinutes := shutdownDelayInt - checksBelowThreshold
-				if remainingMinutes == 0 {
-					log.Printf("Shutdown delay reached. Performing shutdown now.")
-				} else {
-					log.Printf("Memory usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
-				}
-			} else {
-				log.Printf("Memory usage above configured threshold. Resetting shutdown delay back to %d minutes", shutdownDelayInt)
-				checksBelowThreshold = 0
-			}
-		}
 
-		if CPUthreshold != "" {
-			CPUthresholdInt, err := strconv.ParseInt(CPUthreshold, 10, 64)
-			if err != nil {
-				log.Fatalf("%v", err)
-				panic(nil)
-			}
-			cpuUsage := nodeMetrics.Usage["cpu"]
-			cpuValue := cpuUsage.MilliValue()
-			log.Printf("Node %s CPU usage: %dm", nodeName, cpuValue)
-			if cpuValue <= CPUthresholdInt {
-				checksBelowThreshold++
-				remainingMinutes := shutdownDelayInt - checksBelowThreshold
-				if remainingMinutes == 0 {
-					log.Printf("Shutdown delay reached. Performing shutdown now.")
-				} else {
-					log.Printf("CPU usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
-				}
-			} else {
-				log.Printf("CPU usage above configured threshold. Resetting shutdown delay back to %d minutes", shutdownDelayInt)
-				checksBelowThreshold = 0
-			}
-		}
-
-		if checksBelowThreshold >= shutdownDelayInt {
-			if dryRun == "true" {
-				log.Printf("Shutdown delay has been reached. If you want to send an actual shutdown signal, disable dry run mode.")
-				checksBelowThreshold = 0
-			} else {
-				sshConfig := &ssh.ClientConfig{
-					User: sshUser,
-					Auth: []ssh.AuthMethod{
-						// Use the PublicKeys method for remote authentication.
-						ssh.PublicKeys(signer),
-					},
-					HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-					Timeout:         0,
-				}
-				sshClient, err := ssh.Dial("tcp", nodeName+":"+sshPort, sshConfig)
+			if MemoryThreshold != "" {
+				MemoryThresholdInt, err := strconv.ParseInt(MemoryThreshold, 0, 64)
 				if err != nil {
-					log.Fatalf("Error establishing SSH connection: %v", err)
-					return
-				}
-				defer sshClient.Close()
-
-				session, err := sshClient.NewSession()
-				if err != nil {
-					log.Fatalf("Error creating SSH session: %v", err)
-					return
-				}
-				defer session.Close()
-
-				log.Printf("Shutdown delay reached. Sending shutdown signal to node.")
-				output, err := session.CombinedOutput("sudo /usr/sbin/shutdown now")
-				if err != nil {
-					log.Fatalf("Error executing SSH command: %v", err)
+					log.Fatalf("%v", err)
 					panic(nil)
 				}
-				fmt.Printf("%s", output)
-				checksBelowThreshold = 0
+				memoryUsage := nodeMetrics.Usage["memory"]
+				memoryValue := memoryUsage.Value() / 1024 / 1024
+				log.Printf("Node %s memory usage: %dMB", nodeName, memoryValue)
+				if memoryValue <= MemoryThresholdInt {
+					if !incremented {
+						checksBelowThreshold++
+						incremented = true
+					}
+					remainingMinutes := shutdownDelayInt - checksBelowThreshold
+					if remainingMinutes == 0 {
+						log.Printf("Shutdown delay reached. Performing shutdown now.")
+					} else {
+						log.Printf("Memory usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
+					}
+				} else {
+					log.Printf("Memory usage above configured threshold. Resetting shutdown delay back to %d minutes", shutdownDelayInt)
+					checksBelowThreshold = 0
+				}
+			}
+
+			if CPUthreshold != "" {
+				CPUthresholdInt, err := strconv.ParseInt(CPUthreshold, 10, 64)
+				if err != nil {
+					log.Fatalf("%v", err)
+					panic(nil)
+				}
+				cpuUsage := nodeMetrics.Usage["cpu"]
+				cpuValue := cpuUsage.MilliValue()
+
+				log.Printf("Node %s CPU usage: %dm", nodeName, cpuValue)
+				if cpuValue <= CPUthresholdInt {
+					if !incremented {
+						checksBelowThreshold++
+						incremented = true
+					}
+					remainingMinutes := shutdownDelayInt - checksBelowThreshold
+					if remainingMinutes == 0 {
+						log.Printf("Shutdown delay reached. Performing shutdown now.")
+					} else {
+						log.Printf("CPU usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
+					}
+				} else {
+					log.Printf("CPU usage above configured threshold. Resetting shutdown delay back to %d minutes", shutdownDelayInt)
+					checksBelowThreshold = 0
+				}
+			}
+
+			if checksBelowThreshold >= shutdownDelayInt {
+				if dryRun == "true" {
+					log.Printf("Shutdown delay has been reached. If you want to send an actual shutdown signal, disable dry run mode.")
+					checksBelowThreshold = 0
+				} else {
+					sshConfig := &ssh.ClientConfig{
+						User: sshUser,
+						Auth: []ssh.AuthMethod{
+							// Use the PublicKeys method for remote authentication.
+							ssh.PublicKeys(signer),
+						},
+						HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+						Timeout:         0,
+					}
+					sshClient, err := ssh.Dial("tcp", nodeName+":"+sshPort, sshConfig)
+					if err != nil {
+						log.Fatalf("Error establishing SSH connection: %v", err)
+						return
+					}
+					defer sshClient.Close()
+
+					session, err := sshClient.NewSession()
+					if err != nil {
+						log.Fatalf("Error creating SSH session: %v", err)
+						return
+					}
+					defer session.Close()
+
+					log.Printf("Shutdown delay reached. Sending shutdown signal to node.")
+					output, err := session.CombinedOutput("sudo /usr/sbin/shutdown now")
+					if err != nil {
+						log.Fatalf("Error executing SSH command: %v", err)
+						panic(nil)
+					}
+					fmt.Printf("%s", output)
+					checksBelowThreshold = 0
+				}
 			}
 		}
 	}
 
-	checkAndSSH()
 	for range timer.C {
 		checkAndSSH()
+		incremented = false
 	}
 
 	stopCh := make(chan struct{})
