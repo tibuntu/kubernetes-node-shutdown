@@ -119,7 +119,11 @@ func main() {
 			if memoryValue <= MemoryThresholdInt {
 				checksBelowThreshold++
 				remainingMinutes := shutdownDelayInt - checksBelowThreshold
-				log.Printf("Memory usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
+				if remainingMinutes == 0 {
+					log.Printf("Shutdown delay reached. Performing shutdown now.")
+				} else {
+					log.Printf("Memory usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
+				}
 			} else {
 				log.Printf("Memory usage above configured threshold. Resetting shutdown delay back to %d minutes", shutdownDelayInt)
 				checksBelowThreshold = 0
@@ -138,7 +142,11 @@ func main() {
 			if cpuValue <= CPUthresholdInt {
 				checksBelowThreshold++
 				remainingMinutes := shutdownDelayInt - checksBelowThreshold
-				log.Printf("CPU usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
+				if remainingMinutes == 0 {
+					log.Printf("Shutdown delay reached. Performing shutdown now.")
+				} else {
+					log.Printf("CPU usage below configured threshold. Shutting down in %d minutes.", remainingMinutes)
+				}
 			} else {
 				log.Printf("CPU usage above configured threshold. Resetting shutdown delay back to %d minutes", shutdownDelayInt)
 				checksBelowThreshold = 0
@@ -161,14 +169,14 @@ func main() {
 				}
 				sshClient, err := ssh.Dial("tcp", nodeName+":"+sshPort, sshConfig)
 				if err != nil {
-					log.Printf("Error establishing SSH connection: %v", err)
+					log.Fatalf("Error establishing SSH connection: %v", err)
 					return
 				}
 				defer sshClient.Close()
 
 				session, err := sshClient.NewSession()
 				if err != nil {
-					log.Printf("Error creating SSH session: %v", err)
+					log.Fatalf("Error creating SSH session: %v", err)
 					return
 				}
 				defer session.Close()
@@ -176,7 +184,7 @@ func main() {
 				log.Printf("Shutdown delay reached. Sending shutdown signal to node.")
 				output, err := session.CombinedOutput("sudo /usr/sbin/shutdown now")
 				if err != nil {
-					log.Printf("Error executing SSH command: %v", err)
+					log.Fatalf("Error executing SSH command: %v", err)
 					panic(nil)
 				}
 				fmt.Printf("%s", output)
