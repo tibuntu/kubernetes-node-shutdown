@@ -2,6 +2,15 @@
 
 ## [Unreleased](https://github.com/tibuntu/kubernetes-node-shutdown/tree/HEAD)
 
+## [v0.2.1](https://github.com/tibuntu/kubernetes-node-shutdown/tree/v0.2.1) (2023-12-09)
+
+[Full Changelog](https://github.com/tibuntu/kubernetes-node-shutdown/compare/v0.2.0...v0.2.1)
+
+## What's Changed
+* fix(deps): update kubernetes packages to v0.29.0 by @renovate in https://github.com/tibuntu/kubernetes-node-shutdown/pull/23
+* fix(deps): update module golang.org/x/crypto to v0.17.0 [security] by @renovate in https://github.com/tibuntu/kubernetes-node-shutdown/pull/26
+* chore(deps): update docker/metadata-action action to v5.4.0 by @renovate in https://github.com/tibuntu/kubernetes-node-shutdown/pull/24
+
 **Closed issues:**
 
 - Improve README.md [\#16](https://github.com/tibuntu/kubernetes-node-shutdown/issues/16)
