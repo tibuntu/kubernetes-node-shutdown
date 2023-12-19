@@ -3,7 +3,7 @@ module github.com/tibuntu/kubernetes-node-shutdown/v2
 go 1.21
 
 require (
-	golang.org/x/crypto v0.16.0
+	golang.org/x/crypto v0.17.0
 	k8s.io/apimachinery v0.29.0
 	k8s.io/client-go v0.29.0
 	k8s.io/metrics v0.29.0
