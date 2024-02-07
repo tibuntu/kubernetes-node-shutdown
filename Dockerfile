@@ -1,5 +1,5 @@
 # Use an ARM-based image as the build environment
-FROM arm64v8/golang:1.21 as builder
+FROM arm64v8/golang:1.22 as builder
 
 # Set the working directory in the container
 WORKDIR /app
